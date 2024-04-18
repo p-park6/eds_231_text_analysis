@@ -1,0 +1,195 @@
+---
+title: "HW1: NYT API"
+author: "Patty Park"
+date: "2024-04-09"
+output: html_document
+---
+
+## Assignment (Due Tuesday 4/9 11:59pm)
+Reminder: Please suppress all long and extraneous output from your submissions (ex:  lists of tokens).
+
+1.  Create a free New York Times account (<https://developer.nytimes.com/get-started>)
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(jsonlite) #convert results from API queries into R-friendly formats 
+library(tidyverse) #tidy
+library(tidytext) #text data management and analysis
+library(ggplot2) #plot word frequencies and publication dates
+library(here)
+
+#source in the api key
+source(here("week1/API_key.R"))
+
+#assign API key.  When you create a NYT Dev account, you will be given a key
+API_KEY <- api_key
+```
+
+
+## Create the url with API included to get access to article headlines
+```{r api}
+#create the query url
+url <- paste("http://api.nytimes.com/svc/search/v2/articlesearch.json?q=haaland&api-key=",API_KEY, sep ="")
+
+#send the request, receive the response, and flatten
+t <- fromJSON(url, flatten = T)
+```
+
+2.  Pick an interesting environmental key word(s) and use the {jsonlite} package to query the API. Pick something high profile enough and over a large enough time frame that your query yields enough articles for an interesting examination.
+
+```{r baseurl}
+#define a term to scrape the nyt search url
+term1 <- "earth"
+begin_date <- "20210120" #beginning date
+end_date <- "20230401" #end date
+
+#construct the query url using API operators
+baseurl <- paste0("http://api.nytimes.com/svc/search/v2/articlesearch.json?q=",
+                  term1, 
+                  "&begin_date=", begin_date,
+                  "&end_date=", end_date,
+                  "&facet_filter=true&api-key=", API_KEY)
+
+#examine our query url
+baseurl
+
+```
+
+```{r list}
+#run initial query
+initialQuery <- fromJSON(baseurl)
+
+#maxPages <- round((initialQuery$response$meta$hits[1] / 10)-1) 
+maxPages <- 10
+
+#initiate a list to hold results of our for loop
+pages <- list()
+
+#loop
+for(i in 1:maxPages){
+  nytSearch <- fromJSON(paste0(baseurl, "&page=", i), flatten = TRUE) %>% data.frame()
+  message("Retrieving page ", i)
+  pages[[i+1]] <- nytSearch #iterate to request all these pages
+  Sys.sleep(12) #slow down how often we send request
+}
+
+#bind the pages and create a tibble
+nyt_df <- bind_rows(pages)
+```
+
+3.  Recreate the publications per day and word frequency plots using the first paragraph field.  This time filter on the response.docs.news_desk variable to winnow out irrelevant results.
+
+-   Make some (at least 3) transformations to the corpus including: add context-specific stopword(s), stem a key term and its variants, remove numbers)
+
+## Response.docs.news_desk
+```{r article-type}
+#with response.docs.news_desk
+
+nyt_df %>% 
+  group_by(response.docs.news_desk) %>%
+  summarize(count=n()) %>% #This creates a new data frame with the count of records for each type_of_material.
+  mutate(percent = (count / sum(count))*100) %>% #add percent of total column
+  ggplot() +
+  geom_bar(aes(y=percent, x=response.docs.news_desk, fill=response.docs.news_desk), stat = "identity") + coord_flip()
+```
+
+```{r}
+#with response.docs.news_desk, find the publication date
+
+nyt_df %>%
+  mutate(pubDay=gsub("T.*","",response.docs.pub_date)) %>% #replace t.* with a comma
+  group_by(pubDay) %>%
+  summarise(count=n()) %>%
+  filter(count >= 2) %>%
+  ggplot() +
+  geom_bar(aes(x=reorder(pubDay, count), y=count), stat="identity") +
+  coord_flip() #put dates on y axis
+```
+
+```{r plot_frequencies}
+#with response.docs.news_desk
+
+#find first paragraph field
+#names(nyt_df)
+#head(nyt_df[,1:6])
+
+tokenized <- nyt_df %>% 
+  filter(response.docs.news_desk != c("culture", "leisure")) %>% 
+  unnest_tokens(word, response.docs.lead_paragraph)
+
+#use tidytext::unnest_tokens to put in tidy form.  
+#tokenized[,"word"]
+```
+
+```{r stop-words}
+#with response.docs.news_desk
+
+#load stop words
+data(stop_words)
+
+#stop word anti_join
+tokenized <- tokenized %>% 
+  anti_join(stop_words)
+
+#plot to see most common words that appear more than 10 times
+tokenized %>%
+  count(word, sort = TRUE) %>% 
+  filter(n > 3) %>% 
+  mutate(word = reorder(word, n)) %>% 
+  ggplot(aes(n, word)) +
+  geom_col() +
+  labs(y = NULL)
+
+```
+
+
+
+## response.docs.headline.main
+
+4.  Recreate the publications per day and word frequency plots using the headlines variable (response.docs.headline.main). Compare the distributions of word frequencies between the first paragraph and headlines. Do you see any difference?
+
+```{r}
+#with response.docs.headline.main
+
+#find first paragraph field
+#names(nyt_df)
+#head(nyt_df[,1:6])
+#The 6th column, "response.doc.lead_paragraph", is the one we want here.
+#nyt_df[6] 
+
+tokenized <- nyt_df %>% 
+  filter(response.docs.headline.main != c("culture", "leisure")) %>% 
+  unnest_tokens(word, response.docs.headline.main)
+
+#use tidytext::unnest_tokens to put in tidy form.  
+#tokenized[,"word"]
+```
+
+
+```{r}
+#with response.docs.headline.main
+
+#load stop words
+data(stop_words)
+
+#stop word anti_join
+tokenized <- tokenized %>% 
+  anti_join(stop_words)
+
+#plot to see most common words that appear more than 3 times
+tokenized %>%
+  count(word, sort = TRUE) %>% 
+  filter(n > 3) %>% 
+  mutate(word = reorder(word, n)) %>% 
+  ggplot(aes(n, word)) +
+  geom_col() +
+  labs(y = NULL)
+```
+
+**ANSWER**: Looking between the two outputs (between the headlines and paragraphs), there doesn't seem to be a big difference between how often these words appear. In the paragraphs, some of these words do appear a bit more often than the headlines, but there is not big difference between the two.
+
+
