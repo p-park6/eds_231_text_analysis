@@ -24,7 +24,7 @@ tbl <-read_csv("https://raw.githubusercontent.com/MaRo406/EDS-231-text-sentiment
 First we'll build the corpus using corpus() from {quanteda}.
 
 ```{r corpus}
-corpus <- corpus()
+corpus <- corpus(x = tbl, text_field = "text")
 ```
 
 Next, we can use tokens(), also from {quanteda}, to construct a tokens object. tokens() takes a range of arguments related to cleaning the data. Next we'll create a stopwords lexicon and remove each word contained in it from our tokens object. The quanteda function tokens_select() lets us do the removal.
