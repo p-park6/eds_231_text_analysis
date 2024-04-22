@@ -34,7 +34,7 @@ add_stops <- stopwords(kind = quanteda_options("language_stopwords"))
 
 tokens(corpus)
 toks <- tokens(corpus, remove_punct = T, remove_numbers = T, remove_url = T)
-toks <- tokens_select(toks, pattern = add_stops, selection = "remove")
+tok1 <- tokens_select(toks, pattern = add_stops, selection = "remove")
 ```
 
 Now we can transform our data to prepare for topic modeling. Let's create a document-feature matrix with quanteda::dfm(). Topic modeling doesn't work with empty rows in this matrix, so we'll need to remove those. I do that here using {slam}, which is designed to deal with sparse matrices like ours.
@@ -43,7 +43,8 @@ Now we can transform our data to prepare for topic modeling. Let's create a docu
 dfm1 <- dfm(tok1, tolower = T)
 dfm2 <- dfm_trim(dfm1, min_docfreq = 2)
 
-sel_idx <- slam::row_sums(dfm) >0
+
+sel_idx <- slam::row_sums(dfm2) >0
 dfm <- dfm2[sel_idx,]
 ```
 
@@ -69,7 +70,7 @@ Let's examine at our results. posterior() extracts the theta and beta matrices.
 results <- posterior(topicModel_k3)
 attributes(results)
 
-beta <- result$terms
+beta <- results$terms
 theta <- results$topics
 
 dim(beta)
@@ -82,7 +83,7 @@ Alright, so that worked out OK. An alternative to specifying k based on theory o
 
 ```{r find_k}
 
-results <- FindTopicNumber(dfm,
+results <- FindTopicsNumber(dfm,
                            topics = seq(from = 2,
                                         to = 20,
                                         by = 1),
@@ -140,7 +141,8 @@ Let's assign names to the topics so we know what we are working with.
 
 ```{r topic_names}
 topic_words <- terms(topicModel_k_select, 5)
-topic_names <- apply(topic_words, 2, paste, sep = " ")
+#topic_names <- apply(topic_words, 2, paste, sep = " ")
+topic_names <- apply(topic_words, 2, paste, collapse = " ")
 ```
 
 We can explore the theta matrix, which contains the distribution of each topic over each document.
@@ -153,6 +155,7 @@ n <- length(example_ids)
 # get topic proportions from example documents
 example_props <- theta[example_ids, ]
 colnames(example_props) <- topic_names
+
 
 #combine example topics with identifiers and melt to plotting form
 viz_df <- melt(cbind(data.frame(example_props),

@@ -1,6 +1,6 @@
 ---
 title: "Lab3"
-author: "Your Name"
+author: "Patty Park"
 date: "2024-04-17"
 output: html_document
 ---
@@ -8,9 +8,31 @@ output: html_document
 
 Due next week: April 23 at 11:59PM
 
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+#load packages
+library(quanteda)
+library(tm)
+library(topicmodels)
+library(ldatuning)
+library(tidyverse)
+library(tidytext)
+library(reshape2)
+```
+
+
 For this assignment you'll use the article data you downloaded from Nexis Uni in Week 2.
 
+```{r}
+#load in data
+tiktok_ca <- 
+```
+
+
 1.  Create a corpus from your articles.
+
+
 
 2.  Clean the data as appropriate.
 
