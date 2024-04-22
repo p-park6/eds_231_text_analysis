@@ -19,24 +19,143 @@ library(ldatuning)
 library(tidyverse)
 library(tidytext)
 library(reshape2)
+library(here)
 ```
 
 
 For this assignment you'll use the article data you downloaded from Nexis Uni in Week 2.
 
 ```{r}
-#load in data
-tiktok_ca <- 
+#load in data from assignment 2
+tiktok_ca <- read_csv(here("week3/data/tiktok_ca.csv"))
 ```
 
 
 1.  Create a corpus from your articles.
 
+```{r}
+#create a corpus
+corpus <- corpus(x = tiktok_ca, text_field = "text")
+```
 
 
 2.  Clean the data as appropriate.
 
+```{r}
+#create stop words to remove from our token
+add_stops <- stopwords(kind = quanteda_options("language_stopwords"))
+
+#create a token object from the corpus object
+tokens(corpus)
+# create a new token from the corpus that removes punctuations, numbers and url
+toks <- tokens(corpus, remove_punct = T, remove_numbers = T, remove_url = T)
+#select certain words from the new token object that removes the stopwords from the add_stop object
+tok1 <- tokens_select(toks, pattern = add_stops, selection = "remove")
+
+# transform data to a document-feature matrix
+dfm1 <- dfm(tok1, tolower = T)
+#trim the dfm
+dfm2 <- dfm_trim(dfm1, min_docfreq = 2)
+
+#form row with the row_sums function
+sel_idx <- slam::row_sums(dfm2) >0
+dfm <- dfm2[sel_idx,]
+```
+
+
 3.  Run three models (i.e. with 3 values of k) and select the overall best value for k (the number of topics) - include some justification for your selection: theory, FindTopicsNumber() optimization metrics, interpretability, LDAvis. Select the best single value of k.
+
+```{r}
+#k as 3
+k <- 3
+
+#
+topicModel_k3 <- LDA(dfm,
+                     k,
+                     method = "Gibbs",
+                     control = list(iter = 1000),
+                     verbose = 25)
+
+results_k3 <- posterior(topicModel_k3)
+attributes(results_k3)
+
+beta_k3 <- results$terms
+theta_k3 <- results$topics
+
+terms(topicModel_k3, 10)
+
+results_k3 <- FindTopicsNumber(dfm,
+                           topics = seq(from = 2,
+                                        to = 20,
+                                        by = 1),
+                           metrics = c("CaoJuan2009", "Deveaud2014"),
+                           method = "Gibbs",
+                           verbose = T)
+
+FindTopicsNumber_plot(results_k3)
+```
+
+```{r}
+#k as 4
+k <- 4
+
+topicModel_k4 <- LDA(dfm,
+                     k,
+                     method = "Gibbs",
+                     control = list(iter = 1000),
+                     verbose = 25)
+
+results_k4 <- posterior(topicModel_k4)
+attributes(results_k4)
+
+beta_k4 <- results$terms
+theta_k4 <- results$topics
+
+terms(topicModel_k4, 10)
+
+results_k4 <- FindTopicsNumber(dfm,
+                           topics = seq(from = 2,
+                                        to = 20,
+                                        by = 1),
+                           metrics = c("CaoJuan2009", "Deveaud2014"),
+                           method = "Gibbs",
+                           verbose = T)
+
+FindTopicsNumber_plot(results_k4)
+```
+
+
+```{r}
+#k as 5
+k <- 5
+
+topicModel_k5 <- LDA(dfm,
+                     k,
+                     method = "Gibbs",
+                     control = list(iter = 1000,
+                     verbose = 25))
+
+results_k5 <- posterior(topicModel_k5)
+attributes(results_k5)
+
+beta_k5 <- results$terms
+theta_k5 <- results$topics
+
+terms(topicModel_k5, 10)
+
+results_k5 <- FindTopicsNumber(dfm,
+                           topics = seq(from = 2,
+                                        to = 20,
+                                        by = 1),
+                           metrics = c("CaoJuan2009", "Deveaud2014"),
+                           method = "Gibbs",
+                           verbose = T)
+
+FindTopicsNumber_plot(results_k5)
+```
+
+
+
 
 4.  Plot the top terms in each topic and the distribution of topics across a sample of the documents (constrained by what looks good in the plot).
 

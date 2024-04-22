@@ -110,6 +110,7 @@ terms(topicModel_k_select, 10)
 theta <- tmResult$topics
 beta <- tmResult$terms
 vocab <- colnames(beta)
+
 ```
 
 There are multiple proposed methods for how to measure the best k value. You can go down the rabbit hole here: https://rpubs.com/siri/ldatuning
