@@ -1,0 +1,229 @@
+---
+title: "Lab 4"
+author: "Patty Park"
+date: "2024-05-07"
+output: html_document
+---
+
+
+```{r packages, include = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+library(tidytext)
+library(tidyverse)
+library(tidymodels)
+library(textrecipes)
+library(vip)
+```
+
+
+Lab 4 Assignment: Due May 7 at 11:59pm
+
+```{r data}
+#load in data
+urlfile ="https://raw.githubusercontent.com/MaRo406/EDS-231-text-sentiment/main/data/climbing_reports_model_dat.csv"
+incidents_df<-readr::read_csv(url(urlfile))
+```
+
+
+1. Select another classification algorithm.  
+
+**Answer**: For this assignment, I'll be using the k nearest neighbor (kNN) classification algorithm to do my analysis.
+
+2. Conduct an initial out-of-the-box model fit on the training data and prediction on the test data.  Assess the performance of this initial model. 
+
+```{r out-of-the-box}
+
+#set seed
+set.seed(50)
+
+#===============================================
+#-------------cleaning dataset------------------
+#===============================================
+
+#clean up dataset
+climbing_incidents <- incidents_df %>%
+  mutate(fatal = factor(if_else(
+                        is.na(Deadly),
+                        "non-fatal", "fatal")))
+
+#split dataset
+incidents_split <- initial_split(climbing_incidents, strata = fatal)
+
+#create training and testing data
+incidents_train <- training(incidents_split)
+incidents_test <- testing(incidents_split)
+
+
+#===============================================
+#-------------recipe and workflow---------------
+#===============================================
+
+
+#create the first recipe for the dataset to specity predictor and outcome variable
+incidents_rec <- recipe(fatal ~ Text, data = incidents_train)
+
+# create our recipe for our pre-processing steps
+recipe <- incidents_rec %>%
+  step_tokenize(Text) %>%
+  step_tokenfilter(Text, max_tokens = 1000) %>% #1000
+  step_tfidf(Text)
+
+#create our workflow
+incidents_wf <- workflow() %>%
+  add_recipe(recipe)
+
+#specify our algorithm that we want to use
+knn_model <- nearest_neighbor(neighbors = 5) %>% 
+  set_mode("classification") %>% 
+  set_engine("kknn")
+
+#set the folds to match the training data
+incidents_folds <- vfold_cv(incidents_train)
+
+# create the workflow
+knn_wf <- workflow() %>%
+    add_recipe(recipe) %>%
+    add_model(knn_model)
+#view the workflow
+#knn_wf
+
+#fit the samples on each of the sampled folds (basically finding the best metrics)
+knn_rs <- fit_resamples(
+  knn_wf, 
+  incidents_folds, 
+  control = control_resamples(save_pred = T)
+)
+
+
+#=================================================================================================
+#------finalizing workflow, fitting on training data, and predicting on testing data------------
+#=================================================================================================
+
+
+# #find the metrics and predictions of the sampled folds
+knn_rs_metrics <- collect_metrics(knn_rs)
+
+# #view metrics
+knn_rs_metrics
+
+#finalize workflow and choose best model
+knn_final <- finalize_workflow(knn_wf, select_best(knn_rs, metric = "roc_auc"))
+
+#fit training dataset
+train_fit <- fit(knn_final, incidents_train) #fit the KNN model to the training set
+#view the fitted model
+#train_fit
+
+#predict only the class value on the testing data
+test_predict <- predict(object = train_fit, new_data = incidents_test) %>% #predict the training set
+  bind_cols(incidents_test) #bind testing set column to prediction
+
+#view predicted model
+test_predict
+
+#see the accuracy of the model
+accuracy(test_predict, truth = fatal, estimate = .pred_class)
+
+
+```
+
+
+3. Select the relevant hyperparameters for your algorithm and tune your model.
+
+```{r}
+#===============================================
+#---------recipe, workflow, and tune------------
+#===============================================
+
+#create a new model with parameters to tune
+knn_model_tune <- nearest_neighbor(neighbors = tune()) %>% 
+  set_mode("classification") %>% 
+  set_engine("kknn")
+
+# create the workflow
+knn_wf_tune <- workflow() %>%
+    add_recipe(recipe) %>%
+    add_model(knn_model_tune)
+#view the workflow
+#knn_wf_tune
+
+#tune grid
+knn_cv_tune <- knn_wf_tune %>% 
+  tune_grid(resamples = incidents_folds, grid = 5, control = control_resamples(save_pred = T))
+
+#look at the tuned grid
+#knn_cv_tune
+```
+
+
+4. Conduct a model fit using your newly tuned model specification.  How does it compare to your out-of-the-box model?
+
+- My tuned model did much better than my out of the box model, with an higher accuracy of about 0.75.
+
+```{r}
+#=================================================================================================
+#--------finalizing workflow, fitting on training data, and predicting on testing data------------
+#=================================================================================================
+
+#get metrics from the tuned grid
+knn_rs_metrics <- collect_metrics(knn_cv_tune)
+
+#view metrics
+#knn_rs_metrics
+
+#show best model
+show_best(knn_cv_tune)
+
+#finalize workflow
+knn_final_tune <- finalize_workflow(knn_wf_tune, select_best(knn_cv_tune, metric = "roc_auc"))
+
+#fit training dataset
+train_fit_tune <- fit(knn_final_tune, incidents_train) #fit the KNN model to the training set
+#view the fitted model
+#train_fit_tune
+
+#predict only the class value (a string output)
+test_predict_tune <- predict(object = train_fit_tune, new_data = incidents_test) %>% #predict the training set
+  bind_cols(incidents_test) #bind training set column to prediction
+
+#view predicted model
+#test_predict_tune
+
+#see the accuracy of the model
+accuracy(test_predict_tune, truth = fatal, estimate = .pred_class)
+```
+
+
+5.
+  a. Use variable importance to determine the terms most highly associated with non-fatal reports?  What about terms associated with fatal reports? OR
+  b. If you aren't able to get at variable importance with your selected algorithm, instead tell me how you might in theory be able to do it. Or how you might determine the important distinguishing words in some other way. 
+  
+**Answer**:From various sources from [here](https://stats.stackexchange.com/questions/363662/can-you-derive-variable-importance-from-a-nearest-neighbor-algorithm) and [here](https://stackoverflow.com/questions/55314345/how-to-find-feature-importance-or-variable-importance-graph-for-knnclassifier), it mentioned that there are not many easy ways to find the variable importance for an kNN model. One possible way to find the variable importance is by doing another model, such as a regression or a random forest model, which we can then extract the variable importance.
+
+Theoretically, I could find the distance between the samples that I am predicting on, and find the distance between some random points. Afterwards, I could divide the distance on the samples I am predicting on by the distance of the random points. The smaller the number, the more important that variable is.
+  
+
+6. Predict fatality of the reports in the test set.  Compare this prediction performance to that of the Naive Bayes and Lasso models.  Why do you think your model performed as it did, relative to the other two?
+
+```{r}
+#===============================================
+#--------------viewing metrics------------------
+#===============================================
+
+#accuracy of predicting fatalities using testing data
+accuracy(test_predict_tune, truth = fatal, estimate = .pred_class)
+
+#confusion matrix with prediction using testing data
+conf_mat(test_predict_tune, truth = fatal, estimate = .pred_class) %>%
+  autoplot(type = "heatmap")
+
+```
+
+
+**Answer**: Here, my accuracy was about 0.75 looking at the estimate column using the kNN model. This was worse than the Naive Bayes and Lasso models as they scored about 80% or higher for their accuracy metric. Looking also at the confusion matrix, the kNN model arguably did worse in terms of predicting fatal incidents when in reality, they were non-fatal incidents. This is most likely because in the kNN model, it is grouping those that are most similar to each other. 
+
+It would be beneficial to look at the variable importance for the kNN model, but because it is not possible, I will be referencing the variable importance we did in lab. In the non-fatal variable importance analysis, there are words that appear, such as 'broken' and 'injury'. In the kNN model, these words may have been featured in both fatal and non-fatal incidents. This may have led it to group certain non-fatal incidents as fatal as they both shared these similar words.
+
+
+
+

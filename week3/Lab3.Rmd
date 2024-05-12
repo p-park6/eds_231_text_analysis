@@ -46,7 +46,7 @@ corpus <- corpus(x = tiktok_ca, text_field = "text")
 add_stops <- stopwords(kind = quanteda_options("language_stopwords"))
 
 #create a token object from the corpus object
-tokens(corpus)
+# tokens(corpus)
 # create a new token from the corpus that removes punctuations, numbers and url
 toks <- tokens(corpus, remove_punct = T, remove_numbers = T, remove_url = T)
 #select certain words from the new token object that removes the stopwords from the add_stop object
@@ -58,70 +58,85 @@ dfm1 <- dfm(tok1, tolower = T)
 dfm2 <- dfm_trim(dfm1, min_docfreq = 2)
 
 #form row with the row_sums function
-sel_idx <- slam::row_sums(dfm2) >0
+sel_idx <- slam::row_sums(dfm2) > 0
 dfm <- dfm2[sel_idx,]
 ```
 
 
 3.  Run three models (i.e. with 3 values of k) and select the overall best value for k (the number of topics) - include some justification for your selection: theory, FindTopicsNumber() optimization metrics, interpretability, LDAvis. Select the best single value of k.
 
+
+```{r}
+set.seed(50)
+
+#find the best number for k
+results <- FindTopicsNumber(dfm,
+                           topics = seq(from = 2,
+                                        to = 20,
+                                        by = 1),
+                           metrics = c("CaoJuan2009", "Deveaud2014"),
+                           method = "Gibbs",
+                           verbose = T)
+
+FindTopicsNumber_plot(results)
+```
+
+
 ```{r}
 #k as 3
 k <- 3
 
-#
+#create the LDA model
 topicModel_k3 <- LDA(dfm,
                      k,
                      method = "Gibbs",
                      control = list(iter = 1000),
                      verbose = 25)
 
+#extract the beta and theta term
 results_k3 <- posterior(topicModel_k3)
-attributes(results_k3)
+attributes(results_k3) #look at the attributes in the results term
 
-beta_k3 <- results$terms
-theta_k3 <- results$topics
+#assign appropriate terms to the appropriate object, will be used in helping to plot the terms
+beta_k3 <- results_k3$terms
+theta_k3 <- results_k3$topics
 
+# view the dimensions of the beta and theta
+# dim(beta_k3)
+# dim(theta_k3)
+
+#look at the most appeared terms that pop up per topic
 terms(topicModel_k3, 10)
 
-results_k3 <- FindTopicsNumber(dfm,
-                           topics = seq(from = 2,
-                                        to = 20,
-                                        by = 1),
-                           metrics = c("CaoJuan2009", "Deveaud2014"),
-                           method = "Gibbs",
-                           verbose = T)
-
-FindTopicsNumber_plot(results_k3)
 ```
 
 ```{r}
+set.seed(50)
+
 #k as 4
 k <- 4
 
+#create the LDA model
 topicModel_k4 <- LDA(dfm,
                      k,
                      method = "Gibbs",
                      control = list(iter = 1000),
                      verbose = 25)
 
+#extract the beta and theta term
 results_k4 <- posterior(topicModel_k4)
-attributes(results_k4)
+# attributes(results_k4) #look at the attributes in the results term
 
-beta_k4 <- results$terms
-theta_k4 <- results$topics
+#assign appropriate terms to the appropriate object, will be used in helping to plot the terms
+beta_k4 <- results_k4$terms
+theta_k4 <- results_k4$topics
 
+# dim(beta_k4)
+# dim(theta_k4)
+
+#look at the most appeared terms that pop up per topic
 terms(topicModel_k4, 10)
 
-results_k4 <- FindTopicsNumber(dfm,
-                           topics = seq(from = 2,
-                                        to = 20,
-                                        by = 1),
-                           metrics = c("CaoJuan2009", "Deveaud2014"),
-                           method = "Gibbs",
-                           verbose = T)
-
-FindTopicsNumber_plot(results_k4)
 ```
 
 
@@ -129,34 +144,91 @@ FindTopicsNumber_plot(results_k4)
 #k as 5
 k <- 5
 
+#create the LDA model
 topicModel_k5 <- LDA(dfm,
                      k,
                      method = "Gibbs",
                      control = list(iter = 1000,
                      verbose = 25))
 
+#extract the beta and theta term
 results_k5 <- posterior(topicModel_k5)
-attributes(results_k5)
+# attributes(results_k5)#look at the attributes in the results term
 
-beta_k5 <- results$terms
-theta_k5 <- results$topics
+#assign appropriate terms to the appropriate object, will be used in helping to plot the terms
+beta_k5 <- results_k5$terms
+theta_k5 <- results_k5$topics
 
+# dim(beta_k5)
+# dim(theta_k5)
+
+#look at the most appeared terms that pop up per topic
 terms(topicModel_k5, 10)
 
-results_k5 <- FindTopicsNumber(dfm,
-                           topics = seq(from = 2,
-                                        to = 20,
-                                        by = 1),
-                           metrics = c("CaoJuan2009", "Deveaud2014"),
-                           method = "Gibbs",
-                           verbose = T)
-
-FindTopicsNumber_plot(results_k5)
 ```
 
 
+**Answer**: Looking at my values that I put for k, the best value is 4 for the articles that I have looked at. Using the `FindTopicsNumber()` function, I consistently got the combination at when k = 4, I got the highest amount for the maximize column and the lowest amount for the minimize column. I am a bit surprised that 4 was the best k number as the topic that I was looking at was tiktok. However, this makes more sense as I focused on articles that were published in California. Also to note is that most of the topics found related to tiktok in California would be 'gossip-like' topics, such as celebrities or the new trend.
 
 
 4.  Plot the top terms in each topic and the distribution of topics across a sample of the documents (constrained by what looks good in the plot).
 
+```{r}
+#tidy the topicModel_k4 dataset
+topics <- tidy(topicModel_k4, matrix = "beta")
+#rearrange the topic to have top ten words from each topic
+top_terms <- topics %>% 
+  group_by(topic) %>% 
+  top_n(10, beta) %>% 
+  ungroup() %>% 
+  arrange(topic, -beta)
+
+#create graph of most common words per topic
+top_terms %>% 
+  mutate(term = reorder_within(term, beta, topic, sep = "")) %>% 
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = F) +
+  facet_wrap(~topic, scales = "free_y") +
+  scale_x_reordered()+
+  coord_flip() +
+  labs(title = "Most commone words per topic")
+
+#find top 5 words per topic
+topic_words <- terms(topicModel_k4, 5)
+# create topic_words into a character string vector
+topic_names <- apply(topic_words, 2, paste, collapse = " ")
+
+
+#specify # of examples to inspect
+example_ids <- c(1:5)
+n <- length(example_ids)
+
+# get topic proportions from example documents
+example_props <- theta_k4[example_ids, ]
+colnames(example_props) <- topic_names #assign names to topics we are working with
+
+
+#combine example topics with identifiers and melt to plotting form
+viz_df <- melt(cbind(data.frame(example_props),
+                     document = factor(1:n),
+                     variable.names = "topic",
+                     id.vars = "document"))
+
+#create plot of distribution of each topic over each document
+ggplot(data = viz_df, aes(variable,value, fill= document),
+       ylab = "proportion") +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  coord_flip() +
+  facet_wrap(~document, ncol = n) +
+  labs(title = "Most common topic for the first 5 documents")
+
+
+```
+
+
 5.  Take a stab at interpreting the resulting topics. What are the key themes discussed in the articles in your data base?
+
+**Answer**: The two main overarching theme from these results are political news in social media format (from topic 4) and entertaining media, most centered around Los Angeles (from topic 3). Because Tiktok is a big platformed used to sell products, topic 1 Top Ten words makes the most sense as most of the words can be related to stores you can buy products at as well as different products that are being advertised on the app.
+
+

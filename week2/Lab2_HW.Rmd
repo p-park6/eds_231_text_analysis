@@ -5,6 +5,8 @@ date: "2024-04-10"
 output: html_document
 ---
 
+
+
 ## Assignment (Due 4/16 by 11:59 PM)
 
 ```{r setup, include=FALSE}
@@ -21,12 +23,13 @@ library(patchwork)
 library(lubridate)
 ```
 
+## Tiktok Articles from California sources
 
 ### Explore your data
 
 ```{r load data}
 #load in data
-post_files <- list.files(pattern = ".docx", path = here("data/tiktok_california"),
+post_files <- list.files(pattern = ".docx", path = here("week2/data/tiktok_california"),
                       full.names = TRUE, 
                       recursive = TRUE, 
                       ignore.case = TRUE)
@@ -51,6 +54,7 @@ new_data <- tibble(Date = meta_df$Date, #date column
 
 
 new_data #see results of newly created dataframe
+write_csv(new_data, file = here("week2/data/tiktok_ca.csv"))
 ```
 
 
@@ -205,3 +209,189 @@ ggplot(data = nrc_word_dates_clean, aes(x = date_2, y = count, fill = sentiment)
 
 **Answer**: Looking at this graph, I first notice that all the articles that I have are from dates from October all the way to April. That is at least 6 months worth of data. I see that in October (in the year 2023), the sentiment was very much towards a positive tone. However, looking at April (in the year 2024), there is a good percentage of positive tone, but there are more counts of negative sentiment found in these articles. One reason that may have caused the surge of negative sentiment was that the US government voted to ban TikTok. Most likely, these articles mentioned words like 'ban' and any words relating to the government.
 
+
+## Tiktok articles from International sources
+
+### Explore your data
+
+```{r load data}
+#load in data
+post_files <- list.files(pattern = ".docx", path = here("week2/data/tiktok_international"),
+                      full.names = TRUE, 
+                      recursive = TRUE, 
+                      ignore.case = TRUE)
+
+# read in files
+data <- lnt_read(post_files, convert_date = FALSE, remove_cover = FALSE)
+
+```
+
+```{r lnt_object}
+#retrieve appropriate data from the texts we have given it
+meta_df <- data@meta #finding meta data
+articles_df <- data@articles #finding articles
+paragraphs_df <- data@paragraphs #finding paragraphs
+
+#put all of these into a dataframe
+new_data <- tibble(Date = meta_df$Date, #date column
+               Headline = meta_df$Headline, #headline column
+               id = articles_df$ID, #id column
+               text = articles_df$Article) %>%  #text column
+  distinct(text, .keep_all = TRUE) #get rid of duplicates
+
+
+new_data #see results of newly created dataframe
+write_csv(new_data, file = here("week2/data/tiktok_int.csv"))
+```
+
+
+1.  Calculate mean sentiment across all your articles
+
+```{r mean sentiment}
+#load the bing sentiment lexicon from tidytext
+bing_sentiment <-  get_sentiments("bing")
+
+#seperate each word in its own observation
+text_words <- new_data %>% unnest_tokens(output = word, input = text, token = 'words')
+
+#Let's start with a simple numerical score
+sentiment_words <-  
+  text_words %>% #piping from text_word dataset
+  anti_join(stop_words, by = "word") %>% #get rid of stop words in the new dataset
+  inner_join(bing_sentiment, by = "word") %>% #join text_words with bind_sentiment using inner_join to get what sentiment the word is
+  mutate(sent_num = case_when(sentiment == 'negative' ~-1, #if sentiment is negative, put in -1
+                              sentiment == 'positive' ~1)) #if sentiment is positive, put in 1
+
+#look at sent_words
+#sentiment_words
+
+#find the sentiment value per headline
+sentiment_article <- sentiment_words %>% 
+  group_by(Headline) %>% #grouping by headline
+  count(id, sentiment) %>% #counts how many positive and negative sentiments are in the articles by grouping them by id
+  pivot_wider(names_from = sentiment, values_from = n) %>% #puts the negative and positives in the observation by counting the values from n
+  mutate(polarity = positive - negative) #find the net polarity
+
+#Mean polarity
+paste("Mean polarity is", round(mean(sentiment_article$polarity, na.rm = TRUE), 3))
+```
+
+
+2.  Sentiment by article plot. The one provided in class needs significant improvement.
+
+```{r sentiment plot}
+# create sentiment plot for positive sentiment
+positive_sentiment <- ggplot(sentiment_article, aes(x = id)) + #using sentiment_article dataset and id is on x axis
+  theme_classic() + #change theme
+  geom_col(aes(y = positive), #have only positive results show up
+           stat = 'identity', fill = 'slateblue3') + #change color to blue
+  scale_y_continuous(limits = c(0, 100)) + #set the y axis scale
+  labs(title = "Positive Sentiment Analysis: TikTok Articles in California", #change labels
+       y = "Sentiment Score",
+       x = "Article ID")
+
+#create sentiment plot for negative sentiment
+negative_sentiment <- ggplot(sentiment_article, aes(x = id)) + #using sentiment_article datset and id is on x axis
+  theme_classic() + #change theme
+  geom_col(aes(y = negative), #have only negative results show up
+           stat = 'identity', fill = 'red4') + #change color to red
+  scale_y_continuous(limits = c(0, 100)) + #set the y axis
+  labs(title = "Negative Sentiment Analysis: TikTok Articles in California", #change labels
+       y = "Sentiment Score",
+       x = "Article ID")
+
+#using patchwork, stack the two graphs on top of each other
+positive_sentiment/negative_sentiment
+
+```
+
+*Note*: There are many more positive sentiment words than negative sentiment words when looking at article relating to Tiktok that were published in California.
+
+
+3.  Most common nrc emotion words and plot by emotion
+
+```{r nrc words}
+#set sentiment from nrc
+nrc_sentiment <- get_sentiments('nrc')
+
+#create a new dataset that includes the word, sentiment it is associated to, and how many times that word appears
+nrc_word_counts <- text_words %>% 
+  anti_join(stop_words, by = 'word') %>% #get rid of stop_words, joining by 'word'
+  inner_join(nrc_sentiment) %>% #inner join back with nrc_sentiment, which has the sentiment words in it
+  count(word, sentiment, sort = T) #count how many times that word appears, grouping by sentiment
+
+#graph how often the word appears per each sentiment
+nrc_word_counts %>% 
+  group_by(sentiment) %>% #group by sentiment
+  slice_max(n, n=5) %>% #find the 5 words that appear the most
+  ungroup() %>% 
+  mutate(word = reorder(word, n)) %>% #reorder from largest to smallest
+  ggplot(aes(n, word, fill = sentiment)) + #plot, with n on x axis, word on y axis, and fill as sentiment
+  geom_col(show.legend = FALSE) + #get rid of legend
+  facet_wrap(~sentiment, scales = "free_y") + #facet wrap to have each sentiment appear in its own graph
+  labs(x = 'Contribution to Sentiment', y = NULL) #label x axis
+```
+
+
+4.  Look at the nrc contribution to emotion by word plots. Identify and reclassify or remove at least one term that gives misleading results in your context.
+
+```{r update stop words}
+#create new dataframe adding in new stop words we don't want to include
+misleading_words <- data.frame(word = c('teens', 'trump', 'cream', 'content', 'treat'), lexicon = c('text', 'text', 'text', 'text', 'text'))
+
+#combine the two databases together
+stop_words_update <- rbind(stop_words, misleading_words)
+
+#create a new dataset that includes the word, sentiment it is associated to, and how many times that word appears
+nrc_word_counts_update <- text_words %>% 
+  anti_join(stop_words_update, by = 'word') %>% #get rid of stop_words using updated stop_words dataset, joining by 'word'
+  inner_join(nrc_sentiment) %>% #inner join back with nrc_sentiment, which has the sentiment words in it
+  count(word, sentiment, sort = T) #count how many times that word appears, grouping by sentiment
+
+#graph how often the word appears per each sentiment
+nrc_word_counts_update %>% 
+  group_by(sentiment) %>% #group by sentiment
+  slice_max(n, n=5) %>% #find the 5 words that appear the most
+  ungroup() %>% 
+  mutate(word = reorder(word, n)) %>% #reorder from largest to smallest
+  ggplot(aes(n, word, fill = sentiment)) +#plot, with n on x axis, word on y axis, and fill as sentiment
+  geom_col(show.legend = FALSE) + #get rid of legend
+  facet_wrap(~sentiment, scales = "free_y") + #facet wrap to have each sentiment appear in its own graph
+  labs(x = 'contribution to Sentiment', y = NULL) #label x axis
+```
+
+5.  Plot the amount of nrc emotion words as a percentage of all the emotion words used each day (aggregate text from articles published on the same day). How does the distribution of emotion words change over time? Can you think of any reason this would be the case?
+
+```{r}
+#look at the classes of the columns in the dataset
+glimpse(text_words)
+
+#create a new dataset that includes the Date class being changed
+nrc_word_dates <- text_words %>% 
+  anti_join(stop_words, by = 'word') %>% 
+  inner_join(nrc_sentiment) %>% 
+  mutate(date_2 = mdy(Date)) #change the date column to date class
+
+#join the two datasets together to get both date, sentiment and count
+nrc_word_dates_clean <- inner_join(nrc_word_dates, nrc_word_counts) %>% 
+  select(-c(Date)) %>% 
+  rename(count = n) %>% 
+  filter(sentiment != 'negative' & sentiment != 'positive')
+
+#look at the unique sentiments to see if negative and postive were properly filtered out
+#unique(nrc_word_dates_clean$sentiment)
+  
+
+ggplot(data = nrc_word_dates_clean, aes(x = date_2, y = count, fill = sentiment)) +
+  geom_col(width = 2) +
+  scale_fill_manual(values = c("red", "red4", "orange", "green4", "blue", "purple", "cyan4", "pink4"))+
+  labs(title = "Emotion Sentiment Trends over Time",
+       x = "Date", 
+       y = "Count",
+       fill = "Sentiment") +
+  scale_y_continuous(limits = c(0, 150000)) +
+  theme_minimal()
+  
+```
+
+**Answer**: Looking at this graph, I first notice that all the articles that I have are from dates from October all the way to April. That is at least 6 months worth of data. I see that in October (in the year 2023), the sentiment was very much towards a positive tone. However, looking at April (in the year 2024), there is a good percentage of positive tone, but there are more counts of negative sentiment found in these articles. One reason that may have caused the surge of negative sentiment was that the US government voted to ban TikTok. Most likely, these articles mentioned words like 'ban' and any words relating to the government.
