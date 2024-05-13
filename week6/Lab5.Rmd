@@ -1,15 +1,94 @@
 ---
 title: "Lab5"
-author: "Mateo Robbins"
-date: "2024-05-08"
+author: "Patty Park"
+date: "2024-05-14"
 output: html_document
 ---
 
 ### Lab 5 Assignment
 
+```{r packages, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, include = FALSE)
+#read libraries
+library(tidytext)
+library(tidyverse)
+library(widyr)
+library(irlba) 
+library(broom) 
+library(textdata)
+library(ggplot2)
+library(dplyr)
+```
+
+
 #### Train Your Own Embeddings
 
+```{r}
+#load in data
+tiktok_ca <- read_csv("tiktok_ca.csv")
+```
+
+
 1.  Using the data from your Nexis Uni query from Week 2, create a set of word embeddings. To do this, you'll essentially need to recreate the steps in today's example down through the chunk named "pmi". 
+
+```{r unigrams}
+#calculate the unigram probability, which is seeing how often this word appears in the corpus
+
+unigram_prob_tiktok <- tiktok_ca %>% 
+  unnest_tokens(word, text) %>% 
+  anti_join(stop_words, by = 'word') %>% 
+  count(word, sort = T) %>% 
+  mutate(p = n/sum(n))
+
+#check the outcome
+unigram_prob_tiktok
+```
+
+
+```{r make-skipgrams}
+#find out how often we find each word near the other words
+skipgram_tiktok <- tiktok_ca %>% 
+  unnest_tokens(ngram, text, token = 'ngrams', n = 5) %>% #window of 5 words near each other
+  mutate(ngramID = row_number()) %>% #create new ngram column
+  tidyr::unite(skipgramID, id, ngramID) %>% 
+  unnest_tokens(word, ngram) %>% 
+  anti_join(stop_words, by = 'word')
+#view results
+skipgram_tiktok
+
+```
+
+```{r pairwise_count}
+#sum the total number of occurrences of each pair of words using pairwise_count()
+skipgram_probs_tiktok <- skipgram_tiktok %>% 
+  pairwise_count(item = word, feature = skipgramID, diag = F) %>% 
+  mutate(p = n/sum(n))
+#view results
+skipgram_probs_tiktok
+```
+
+```{r norm-prob}
+#normalize probabilities relative to their total occurrences in the data
+normalized_probs_tiktok <- skipgram_probs_tiktok %>% 
+  rename(word1 = item1, word2 = item2) %>% 
+  left_join(unigram_prob_tiktok %>% 
+              select(word1 = word, p1 = p), by = 'word1') %>% 
+  left_join(unigram_prob_tiktok %>% 
+              select(word2 = word, p2 = p), by = 'word2') %>% 
+  mutate(p_together = p/p1/p2)
+#view results
+normalized_probs_tiktok
+```
+
+```{r pmi}
+#see what words appear more often when paired with other word based on how often they occur on their own
+pmi_matrix <- normalized_probs_tiktok %>% 
+  mutate(pmi = log10(p_together)) %>% 
+  cast_sparse(word1, word2, pmi)
+
+```
+
+
 
 2.  Think of 3 important words in your data set. Calculate and plot the 10 most semantically similar words for each of them. Identify and interpret any interesting or surprising results.
 

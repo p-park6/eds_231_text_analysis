@@ -64,7 +64,7 @@ skipgram_probs  <- skipgrams %>%
 skipgram_probs
 ```
 
-The next step is to normalize these probabilities, that is, to calculate how often words occur together within a window, relative to their total occurrences in the data. We'll also harmnoize the naming conventions from the different functions we used.
+The next step is to normalize these probabilities, that is, to calculate how often words occur together within a window, relative to their total occurrences in the data. We'll also harmonize the naming conventions from the different functions we used.
 
 ```{r norm-prob}
 normalized_probs <- skipgram_probs %>% 
@@ -76,11 +76,12 @@ normalized_probs <- skipgram_probs %>%
   mutate(p_together = p/p1/p2)
 
 normalized_probs
+normalized_probs[1001:1010,] 
 ```
 
 Now we have all the pieces to calculate the point-wise mutual information (PMI) measure. It's the logarithm of the normalized probability of finding two words together. PMI tells us which words occur together more often than expected based on how often they occurred on their own.
 
-Then we cast to a matrix so we can use matrix factorization and reduce the dimensionality of the data.
+Then we cast to a matrix so we can use matrix factorization and reduce the dimensional of the data.
 
 ```{r pmi}
 pmi_matrix <- normalized_probs %>% 
@@ -104,11 +105,11 @@ These vectors in the "u" matrix are contain "left singular values". They are ort
 
 ```{r syn_function}
 search_synonyms <- function(word_vectors, selected_vectors, original_word){
-  dat <- word_vectors %*% selected_vector
+  dat <- word_vectors %*% selected_vectors
   similarities <- as.data.frame(dat) %>% 
-    tibble(token = rownames(dat), similarities = dat[,1]) %>% 
+    tibble(token = rownames(dat), similarity = dat[,1]) %>% 
     filter(token != original_word) %>% 
-    arrange(desc(similary)) %>% 
+    arrange(desc(similarity)) %>% 
     select(token, similarity)
   
   return(similarities)
@@ -118,7 +119,9 @@ search_synonyms <- function(word_vectors, selected_vectors, original_word){
 Let's test it out!
 
 ```{r find-synonyms}
-fall <- search_synonyms(word_vectors, word_vectors["fall",], "fall")
+fall <- search_synonyms(word_vectors = word_vectors, 
+                        selected_vectors = word_vectors["fall",], 
+                        original_word = "fall")
 fall
 
 slip <- search_synonyms(word_vectors, word_vectors["slip",], "slip")
@@ -141,9 +144,9 @@ slip %>%
   group_by(selected) %>% 
   top_n(15, similarity) %>% 
   mutate(token = reorder(token, similarity)) %>% 
-  ggplot(aes(token, similarity, fill = seleccted)) +
+  ggplot(aes(token, similarity, fill = selected)) +
   geom_col(show.legend = F) +
-  gacet_wrap(~selected, scales = "free") + 
+  facet_wrap(~selected, scales = "free") + 
   coord_flip() +
   labs(x = NULL,
        title = "Which word vectors are most similar to flip or fall")
@@ -155,6 +158,6 @@ One of the cool things about representing words as numerical vectors is that we 
 snow_danger <- word_vectors["snow",] + word_vectors["danger", ]
 search_synonyms(word_vectors, snow_danger, "")
 
-no_snow_danger <- word_vectors["danger",] + word_vectors["snow", ]
+no_snow_danger <- word_vectors["danger",] - word_vectors["snow", ]
 search_synonyms(word_vectors, no_snow_danger, "")
 ```
